@@ -50,7 +50,7 @@ SYSTEM_PROMPT = """
 # ★ここを診断結果にあった「gemini-2.0-flash」に変更しました！
 # ---------------------------------------------------------
 model = genai.GenerativeModel(
-    model_name="gemini-2.0-flash",
+    model_name="gemini-flash-latest",
     system_instruction=SYSTEM_PROMPT
 )
 
@@ -72,3 +72,4 @@ if st.button("分析を開始する"):
                 st.error(f"エラーが発生しました: {e}")
     else:
         st.warning("文章を入力してください。")
+

@@ -65,7 +65,7 @@ SYSTEM_INSTRUCTION = f"""
 # ※gemini-1.5-flashを使用（安定・高速・長文対応）
 # ---------------------------------------------------------
 model = genai.GenerativeModel(
-    model_name="gemini-1.5-flash",
+    model_name="gemini-flash-latest"
     system_instruction=SYSTEM_INSTRUCTION
 )
 
@@ -93,3 +93,4 @@ if st.button("分析を開始する", type="primary"):
                 st.info("※一時的な通信エラーの可能性があります。もう一度ボタンを押してみてください。")
     else:
         st.warning("相談内容を入力してください。")
+

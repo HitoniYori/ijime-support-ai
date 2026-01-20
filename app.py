@@ -1,46 +1,74 @@
 import streamlit as st
 import google.generativeai as genai
-import sys
 
-st.set_page_config(page_title="診断中", page_icon="🔧")
-st.title("🔧 システム診断モード")
-st.write("この画面の情報を教えてください。")
+# ページ設定
+st.set_page_config(page_title="いじめ対応支援AI", page_icon="🛡️")
 
-# 1. ライブラリのバージョン確認
+st.title("🛡️ いじめ対応支援AIパートナー")
+st.write("学校とのやり取りや相談内容を入力すると、法律（いじめ防止対策推進法など）に基づいた分析とアドバイスを行います。")
+
+# サイドバーに注意書き
+with st.sidebar:
+    st.header("利用上の注意")
+    st.warning("入力された内容はAIによる分析に使用されます。個人情報（実名や特定できる詳細）は伏せて入力してください。")
+    st.info("このAIは法的助言を行う弁護士ではありません。あくまで参考情報として活用し、最終的な判断は専門家にご相談ください。")
+
+# APIキーの設定
 try:
-    st.write(f"Python Version: {sys.version.split()[0]}")
-    st.write(f"SDK Version: {genai.__version__}")
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 except:
-    st.error("SDKのバージョン取得に失敗")
+    st.error("APIキーが設定されていません。")
 
-# 2. API接続とモデル一覧の確認
-try:
-    # APIキーの読み込み
-    api_key = st.secrets["GEMINI_API_KEY"]
-    
-    # キーの前後に余計な空白がないかチェック
-    if api_key.strip() != api_key:
-        st.warning("⚠️ APIキーの前後に空白が含まれています。Secretsを修正してください。")
-    
-    genai.configure(api_key=api_key)
-    
-    st.write("---")
-    st.write("📡 Googleのサーバーに問い合わせ中...")
-    
-    # 利用可能なモデルの一覧を取得
-    models = list(genai.list_models())
-    available_models = []
-    for m in models:
-        # 文章生成（generateContent）ができるモデルだけ抽出
-        if 'generateContent' in m.supported_generation_methods:
-            available_models.append(m.name)
-    
-    if available_models:
-        st.success("✅ API接続成功！ 以下のモデルが使用可能です：")
-        st.code(available_models)
-        st.info("↑このリストの中に 'models/gemini-1.5-flash' などはありますか？")
+# ---------------------------------------------------------
+# 【重要】ここにAIへの指示（法律・ガイドライン）を入れます
+# ---------------------------------------------------------
+SYSTEM_PROMPT = """
+あなたは、いじめ被害児童とその家族を守るための支援AIです。
+以下の【判断基準となる法律・ガイドライン】を完全に理解し、それに照らし合わせてユーザー（保護者）の相談内容を分析してください。
+
+【AIの振る舞い】
+・常に「子どもの最善の利益」を優先してください。
+・保護者に寄り添う温かいトーンで話してください。
+・しかし、分析は感情論ではなく、厳密に法律やガイドラインに基づいたロジカルなものにしてください。
+・学校や教育委員会の対応に、法的な不備（義務違反、調査不足、放置など）があれば、条文を引用して鋭く指摘してください。
+
+【判断基準となる法律・ガイドライン】
+1. いじめ防止対策推進法（特に第22条、23条、28条重大事態）
+2. 文部科学省「いじめの防止等のための基本的な方針」
+3. 学校保健安全法
+（※ここに、HitoniYoriさんが以前準備された条文テキストを貼り付けても良いですし、AIはこの法律を学習済みなのでこのままでも動きます）
+
+【出力フォーマット】
+1. 現状の整理
+2. 法令・ガイドラインとの照合（違反・逸脱の疑いがある箇所の指摘）
+3. 重大事態への該当性チェック
+4. 推奨される次のアクション
+"""
+
+# ---------------------------------------------------------
+# モデルの準備
+# ★ここを診断結果にあった「gemini-2.0-flash」に変更しました！
+# ---------------------------------------------------------
+model = genai.GenerativeModel(
+    model_name="gemini-2.0-flash",
+    system_instruction=SYSTEM_PROMPT
+)
+
+# ユーザー入力エリア
+user_input = st.text_area("相談内容・学校の対応などを入力してください", height=300)
+
+if st.button("分析を開始する"):
+    if user_input:
+        with st.spinner("最新のAIモデル(Gemini 2.0)が法律と照らし合わせて分析中..."):
+            try:
+                # AIへの問い合わせ
+                response = model.generate_content(
+                    user_input,
+                    generation_config={"temperature": 0.1}
+                )
+                st.markdown("### 📋 分析結果")
+                st.write(response.text)
+            except Exception as e:
+                st.error(f"エラーが発生しました: {e}")
     else:
-        st.error("⚠️ APIには繋がりましたが、使えるモデルが見つかりませんでした。")
-
-except Exception as e:
-    st.error(f"❌ 接続エラーが発生しました:\n{e}")
+        st.warning("文章を入力してください。")

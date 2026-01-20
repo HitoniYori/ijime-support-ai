@@ -38,7 +38,7 @@ SYSTEM_PROMPT = """
 
 # モデルの準備
 model = genai.GenerativeModel(
-    model_name="gemini-pro",
+    model_name="gemini-1.5-flash",
     system_instruction=SYSTEM_PROMPT
 )
 
@@ -60,5 +60,6 @@ if st.button("分析を開始する"):
                 st.error(f"エラーが発生しました: {e}")
     else:
         st.warning("文章を入力してください。")
+
 
 

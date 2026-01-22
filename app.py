@@ -1,5 +1,6 @@
 import streamlit as st
 import google.generativeai as genai
+from google.generativeai.types import HarmCategory, HarmBlockThreshold
 
 # law_data.py からテキストを読み込む
 try:
@@ -30,7 +31,6 @@ except:
 
 # ==============================================================================
 # 1. ページ数・URL対応表（AIへのカンニングペーパー）
-#    ※ここが今回の「優しさ」の心臓部です
 # ==============================================================================
 REFERENCE_MAP = """
 【重要資料のページ数・URL対応表】
@@ -111,6 +111,16 @@ SYSTEM_INSTRUCTION = f"""
 # ==============================================================================
 # 3. アプリ実行部分
 # ==============================================================================
+
+# 安全フィルターの設定（ここが今回の修正ポイント！）
+# 暴力や危険なコンテンツと判断されても、ブロックせずに回答させる設定
+safety_settings = {
+    HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+    HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+    HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+    HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+}
+
 model = genai.GenerativeModel(
     model_name="gemini-flash-latest",
     system_instruction=SYSTEM_INSTRUCTION
@@ -123,16 +133,26 @@ if st.button("ページ数付きで分析する", type="primary"):
     if user_input:
         with st.spinner("資料のページ数を確認中..."):
             try:
+                # generate_content に safety_settings を渡す
                 response = model.generate_content(
                     user_input,
-                    generation_config={"temperature": 0.0}
+                    generation_config={"temperature": 0.0},
+                    safety_settings=safety_settings  # ← これを追加しました！
                 )
-                st.markdown("---")
-                st.markdown("### 📋 分析結果")
-                st.write(response.text)
-                st.markdown("---")
-                st.success("💡 **ヒント:** 提示されたページ数（P.〇〇）は、PDFファイルを開いた際のページ番号です。印刷してマーカーを引き、学校交渉にお持ちください。")
+                
+                # 安全フィルターで弾かれた場合でもテキストを取得できるようにする
+                if response.text:
+                    st.markdown("---")
+                    st.markdown("### 📋 分析結果")
+                    st.write(response.text)
+                    st.markdown("---")
+                    st.success("💡 **ヒント:** 提示されたページ数（P.〇〇）は、PDFファイルを開いた際のページ番号です。印刷してマーカーを引き、学校交渉にお持ちください。")
+                else:
+                    st.error("AIが回答を生成できませんでした。別の表現で試してみてください。")
+
             except Exception as e:
+                # エラーの詳細を表示（デバッグ用）
                 st.error(f"エラーが発生しました: {e}")
+                st.info("※「安全フィルター」等の関係で回答がブロックされた可能性があります。")
     else:
         st.warning("相談内容を入力してください。")

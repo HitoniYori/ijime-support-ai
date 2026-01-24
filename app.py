@@ -43,6 +43,7 @@ REFERENCE_MAP = """
 """
 
 # システムプロンプト
+# ※ここに「項番号まで書く」という指示を追加しました
 SYSTEM_INSTRUCTION = f"""
 あなたは、いじめ被害児童とその家族を守るための「法務・教育行政アドバイザーAI」です。
 ユーザーと継続的な対話を行い、学校側の対応に違法性がないかチェックしてください。
@@ -70,7 +71,9 @@ SYSTEM_INSTRUCTION = f"""
 　**[資料名]**
 
 　📍 **該当箇所**
-　**【 P. 〇〇 】** （または 第〇条）
+　**【 第〇条 第〇項 】**
+　※条文の場合は必ず「第何項」まで特定すること！
+　※ガイドラインの場合は **【 P. 〇〇 】**
 
 　🔗 **入手先URL**
 　[URL]
@@ -91,7 +94,7 @@ safety_settings = {
 }
 
 # ---------------------------------------------------------
-# セッション管理（会話の記憶 & アップローダー管理）
+# セッション管理
 # ---------------------------------------------------------
 
 # 1. モデルの準備
@@ -108,13 +111,12 @@ if "chat_session" not in st.session_state:
 # 3. 画面表示用の履歴初期化
 if "messages" not in st.session_state:
     st.session_state.messages = []
-    # 最初の挨拶
     st.session_state.messages.append({
         "role": "assistant",
         "content": "こんにちは。学校の対応やいじめの問題について、資料の分析や法的根拠の確認をお手伝いします。\n証拠資料（PDFや録音など）があればアップロードしてください。"
     })
 
-# 4. アップローダーのリセット用キー（ここを追加！）
+# 4. アップローダーのリセット用キー
 if "uploader_key" not in st.session_state:
     st.session_state["uploader_key"] = 0
 
@@ -122,9 +124,8 @@ if "uploader_key" not in st.session_state:
 # UI部分
 # ---------------------------------------------------------
 
-# アップロード機能（エクスパンダーに収納）
+# アップロード機能
 with st.expander("📂 証拠資料をアップロードする（PDF・音声・画像・Excel）", expanded=True):
-    # keyを動的に設定することで、値を変化させればリセットできるようにする
     uploaded_files = st.file_uploader(
         "会話の中で分析してほしい資料があれば選択してください", 
         type=['png', 'jpg', 'jpeg', 'mp3', 'wav', 'm4a', 'xlsx', 'csv', 'pdf'], 
@@ -132,11 +133,10 @@ with st.expander("📂 証拠資料をアップロードする（PDF・音声・
         key=f"uploader_{st.session_state['uploader_key']}"
     )
     
-    # ファイルがある場合のみ「削除ボタン」を表示
     if uploaded_files:
         if st.button("🗑️ 添付ファイルを全て削除する"):
-            st.session_state["uploader_key"] += 1 # キーを更新してリセット
-            st.rerun() # 画面を再読み込み
+            st.session_state["uploader_key"] += 1
+            st.rerun()
 
 # チャット履歴の表示
 for message in st.session_state.messages:
@@ -146,27 +146,20 @@ for message in st.session_state.messages:
 # チャット入力欄
 if prompt := st.chat_input("相談内容を入力してください..."):
     
-    # 1. ユーザーの入力を表示
     with st.chat_message("user"):
         st.markdown(prompt)
     st.session_state.messages.append({"role": "user", "content": prompt})
 
-    # 2. AIの応答生成
     with st.chat_message("assistant"):
         with st.spinner("分析中..."):
             try:
-                # 送信データの準備
                 content_parts = []
-                
-                # テキストを追加
                 content_parts.append(prompt)
                 
-                # ファイルがアップロードされていれば、それも一緒にAIに見せる
                 if uploaded_files:
                     for uploaded_file in uploaded_files:
                         file_type = uploaded_file.type
                         
-                        # PDF
                         if "pdf" in file_type:
                             try:
                                 reader = pypdf.PdfReader(uploaded_file)
@@ -177,17 +170,14 @@ if prompt := st.chat_input("相談内容を入力してください..."):
                             except:
                                 st.error("PDFの読み込みに失敗しました")
                         
-                        # 画像
                         elif "image" in file_type:
                             img = Image.open(uploaded_file)
                             content_parts.append(img)
                         
-                        # 音声
                         elif "audio" in file_type:
                             audio_bytes = uploaded_file.read()
                             content_parts.append({"mime_type": file_type, "data": audio_bytes})
                         
-                        # Excel
                         elif "spreadsheet" in file_type or "csv" in file_type or "excel" in file_type:
                             try:
                                 if "csv" in file_type:
@@ -198,24 +188,19 @@ if prompt := st.chat_input("相談内容を入力してください..."):
                             except:
                                 st.error("表データの読み込みに失敗しました")
 
-                # AIに送信（セッションを使って会話を継続）
                 response = st.session_state.chat_session.send_message(
                     content_parts,
                     generation_config={"temperature": 0.0},
                     safety_settings=safety_settings
                 )
                 
-                # 結果を表示
                 st.markdown(response.text)
-                
-                # 履歴に追加
                 st.session_state.messages.append({"role": "assistant", "content": response.text})
 
             except Exception as e:
                 st.error(f"エラーが発生しました: {e}")
                 st.info("※会話をリセットしたい場合は、サイドバーの「会話をリセット」ボタンを押してください。")
 
-# サイドバー
 with st.sidebar:
     st.header("ℹ️ 使い方")
     st.info("ブラウザを開いている間は、AIがこれまでの会話や資料の内容を覚えています。「さっきの件だけど…」と続けて質問できます。")

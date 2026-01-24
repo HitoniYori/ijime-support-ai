@@ -4,6 +4,7 @@ from google.generativeai.types import HarmCategory, HarmBlockThreshold
 import pandas as pd
 from PIL import Image
 import pypdf
+import json # 履歴保存のために追加
 
 # law_data.py からテキストを読み込む
 try:
@@ -43,7 +44,6 @@ REFERENCE_MAP = """
 """
 
 # システムプロンプト
-# ※ここに「項番号まで書く」という指示を追加しました
 SYSTEM_INSTRUCTION = f"""
 あなたは、いじめ被害児童とその家族を守るための「法務・教育行政アドバイザーAI」です。
 ユーザーと継続的な対話を行い、学校側の対応に違法性がないかチェックしてください。
@@ -71,9 +71,8 @@ SYSTEM_INSTRUCTION = f"""
 　**[資料名]**
 
 　📍 **該当箇所**
-　**【 第〇条 第〇項 】**
+　**【 第〇条 第〇項 】** （または P.〇〇）
 　※条文の場合は必ず「第何項」まで特定すること！
-　※ガイドラインの場合は **【 P. 〇〇 】**
 
 　🔗 **入手先URL**
 　[URL]
@@ -104,17 +103,26 @@ if "model" not in st.session_state:
         system_instruction=SYSTEM_INSTRUCTION
     )
 
-# 2. チャットセッション（履歴）の初期化
-if "chat_session" not in st.session_state:
-    st.session_state.chat_session = st.session_state.model.start_chat(history=[])
-
-# 3. 画面表示用の履歴初期化
+# 2. 画面表示用の履歴初期化
 if "messages" not in st.session_state:
     st.session_state.messages = []
     st.session_state.messages.append({
         "role": "assistant",
         "content": "こんにちは。学校の対応やいじめの問題について、資料の分析や法的根拠の確認をお手伝いします。\n証拠資料（PDFや録音など）があればアップロードしてください。"
     })
+
+# 3. チャットセッション（AIの記憶）の初期化・復元
+# メッセージ履歴がある場合は、それをAIの記憶としてセットする
+if "chat_session" not in st.session_state:
+    # 履歴をGemini形式に変換して復元
+    history_for_gemini = []
+    for msg in st.session_state.messages:
+        if msg["role"] == "user":
+            history_for_gemini.append({"role": "user", "parts": [msg["content"]]})
+        elif msg["role"] == "assistant":
+            history_for_gemini.append({"role": "model", "parts": [msg["content"]]})
+    
+    st.session_state.chat_session = st.session_state.model.start_chat(history=history_for_gemini)
 
 # 4. アップローダーのリセット用キー
 if "uploader_key" not in st.session_state:
@@ -124,7 +132,58 @@ if "uploader_key" not in st.session_state:
 # UI部分
 # ---------------------------------------------------------
 
-# アップロード機能
+# サイドバー：保存・読み込み・リセット機能
+with st.sidebar:
+    st.header("💾 履歴の保存・読込")
+    st.caption("相談内容を自分の端末に保存して、後で続きから再開できます。")
+
+    # ダウンロードボタン（セーブ）
+    # 現在の会話履歴をJSON形式に変換
+    chat_history_json = json.dumps(st.session_state.messages, ensure_ascii=False, indent=2)
+    st.download_button(
+        label="📥 今日の相談履歴を保存する",
+        data=chat_history_json,
+        file_name="ijime_soudan_history.json",
+        mime="application/json"
+    )
+
+    st.divider()
+
+    # アップロードボタン（ロード）
+    uploaded_history = st.file_uploader("📤 過去の履歴を読み込む", type=["json"])
+    
+    if uploaded_history is not None:
+        try:
+            # ファイルを読み込んで履歴にセット
+            loaded_messages = json.load(uploaded_history)
+            st.session_state.messages = loaded_messages
+            
+            # AIの記憶（chat_session）も再構築するために、セッションを一度クリアしてリラン
+            # 次の再読み込み時に、上の初期化ロジックでAIの記憶が作られる
+            del st.session_state["chat_session"]
+            st.success("履歴を復元しました！")
+            st.rerun()
+        except Exception as e:
+            st.error("履歴ファイルの読み込みに失敗しました。")
+
+    st.divider()
+
+    st.header("ℹ️ 使い方")
+    st.info("ブラウザを閉じると会話は消えます。続きから相談したい場合は、必ず「履歴を保存」してください。")
+    
+    # リセットボタン
+    if st.button("🗑️ 会話履歴をリセットする"):
+        st.session_state.messages = []
+        # 初期メッセージだけ戻す
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": "こんにちは。学校の対応やいじめの問題について、資料の分析や法的根拠の確認をお手伝いします。\n証拠資料（PDFや録音など）があればアップロードしてください。"
+        })
+        # AIの記憶もリセット
+        del st.session_state["chat_session"]
+        st.rerun()
+
+# メイン画面：証拠アップロード
 with st.expander("📂 証拠資料をアップロードする（PDF・音声・画像・Excel）", expanded=True):
     uploaded_files = st.file_uploader(
         "会話の中で分析してほしい資料があれば選択してください", 
@@ -188,6 +247,14 @@ if prompt := st.chat_input("相談内容を入力してください..."):
                             except:
                                 st.error("表データの読み込みに失敗しました")
 
+                # AIの記憶（chat_session）がなければ作成
+                if "chat_session" not in st.session_state:
+                     history_for_gemini = []
+                     for msg in st.session_state.messages[:-1]: # 今回の入力以外を履歴にする
+                        role = "user" if msg["role"] == "user" else "model"
+                        history_for_gemini.append({"role": role, "parts": [msg["content"]]})
+                     st.session_state.chat_session = st.session_state.model.start_chat(history=history_for_gemini)
+
                 response = st.session_state.chat_session.send_message(
                     content_parts,
                     generation_config={"temperature": 0.0},
@@ -199,12 +266,3 @@ if prompt := st.chat_input("相談内容を入力してください..."):
 
             except Exception as e:
                 st.error(f"エラーが発生しました: {e}")
-                st.info("※会話をリセットしたい場合は、サイドバーの「会話をリセット」ボタンを押してください。")
-
-with st.sidebar:
-    st.header("ℹ️ 使い方")
-    st.info("ブラウザを開いている間は、AIがこれまでの会話や資料の内容を覚えています。「さっきの件だけど…」と続けて質問できます。")
-    if st.button("🗑️ 会話履歴をリセットする"):
-        st.session_state.messages = []
-        st.session_state.chat_session = st.session_state.model.start_chat(history=[])
-        st.rerun()

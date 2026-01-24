@@ -65,6 +65,7 @@ SYSTEM_INSTRUCTION = f"""
 （初回分析時などは以下の形式を推奨しますが、会話の流れに応じて自然に応答してください）
 
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+
 　📖 **根拠資料**
 　**[資料名]**
 
@@ -73,6 +74,7 @@ SYSTEM_INSTRUCTION = f"""
 
 　🔗 **入手先URL**
 　[URL]
+
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
 > **内容:** 「......」
@@ -89,7 +91,7 @@ safety_settings = {
 }
 
 # ---------------------------------------------------------
-# セッション管理（会話の記憶）
+# セッション管理（会話の記憶 & アップローダー管理）
 # ---------------------------------------------------------
 
 # 1. モデルの準備
@@ -112,17 +114,29 @@ if "messages" not in st.session_state:
         "content": "こんにちは。学校の対応やいじめの問題について、資料の分析や法的根拠の確認をお手伝いします。\n証拠資料（PDFや録音など）があればアップロードしてください。"
     })
 
+# 4. アップローダーのリセット用キー（ここを追加！）
+if "uploader_key" not in st.session_state:
+    st.session_state["uploader_key"] = 0
+
 # ---------------------------------------------------------
 # UI部分
 # ---------------------------------------------------------
 
-# アップロード機能（エクスパンダーに収納してスッキリさせる）
-with st.expander("📂 証拠資料をアップロードする（PDF・音声・画像・Excel）", expanded=False):
+# アップロード機能（エクスパンダーに収納）
+with st.expander("📂 証拠資料をアップロードする（PDF・音声・画像・Excel）", expanded=True):
+    # keyを動的に設定することで、値を変化させればリセットできるようにする
     uploaded_files = st.file_uploader(
         "会話の中で分析してほしい資料があれば選択してください", 
         type=['png', 'jpg', 'jpeg', 'mp3', 'wav', 'm4a', 'xlsx', 'csv', 'pdf'], 
-        accept_multiple_files=True
+        accept_multiple_files=True,
+        key=f"uploader_{st.session_state['uploader_key']}"
     )
+    
+    # ファイルがある場合のみ「削除ボタン」を表示
+    if uploaded_files:
+        if st.button("🗑️ 添付ファイルを全て削除する"):
+            st.session_state["uploader_key"] += 1 # キーを更新してリセット
+            st.rerun() # 画面を再読み込み
 
 # チャット履歴の表示
 for message in st.session_state.messages:
@@ -199,13 +213,13 @@ if prompt := st.chat_input("相談内容を入力してください..."):
 
             except Exception as e:
                 st.error(f"エラーが発生しました: {e}")
-                st.info("※会話をリセットしたい場合は、ブラウザを再読み込みしてください。")
+                st.info("※会話をリセットしたい場合は、サイドバーの「会話をリセット」ボタンを押してください。")
 
 # サイドバー
 with st.sidebar:
     st.header("ℹ️ 使い方")
     st.info("ブラウザを開いている間は、AIがこれまでの会話や資料の内容を覚えています。「さっきの件だけど…」と続けて質問できます。")
-    if st.button("🗑️ 会話をリセットする"):
+    if st.button("🗑️ 会話履歴をリセットする"):
         st.session_state.messages = []
         st.session_state.chat_session = st.session_state.model.start_chat(history=[])
         st.rerun()

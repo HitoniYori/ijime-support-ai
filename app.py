@@ -4,7 +4,7 @@ from google.generativeai.types import HarmCategory, HarmBlockThreshold
 import pandas as pd
 from PIL import Image
 import pypdf
-import json # 履歴保存のために追加
+import json
 
 # law_data.py からテキストを読み込む
 try:
@@ -17,8 +17,8 @@ st.set_page_config(page_title="いじめ対応支援AI", page_icon="🛡️")
 
 st.title("🛡️ いじめ対応支援AIパートナー")
 st.markdown("""
-**「継続的な対話」でサポートします。**
-資料をアップロードして分析した後も、「もっと詳しく教えて」「この部分は条文のどこ？」のように、会話を続けることができます。
+**学校や教育委員会の対応に疑問を感じていませんか？**
+文章だけでなく、**「学校からの手紙(PDF)」「録音データ」「手書きメモの写真」**などをアップロードすると、法律違反がないか徹底的にチェックし、**根拠となる資料とページ数**を案内します。
 """)
 
 # APIキーの設定
@@ -27,9 +27,11 @@ try:
 except:
     st.error("APIキー設定エラー：Streamlit CloudのSecretsを確認してください。")
 
-# 参照資料リスト
+# 参照資料リスト（リンク修正済み）
 REFERENCE_MAP = """
 【重要資料のページ数・URL対応表】
+AIは回答時に、以下の情報を参照して「該当ページ数」を必ず提示してください。
+
 ■いじめの重大事態の調査に関するガイドライン（令和6年8月改訂版）
 [URL] https://www.mext.go.jp/a_menu/shotou/seitoshidou/1302904.htm
 [ページ目安] P.1(基本的姿勢), P.2(重大事態定義), P.4(報告義務), P.15(公表)
@@ -63,7 +65,6 @@ SYSTEM_INSTRUCTION = f"""
 ---
 
 【出力フォーマット】
-（初回分析時などは以下の形式を推奨しますが、会話の流れに応じて自然に応答してください）
 
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 
@@ -76,6 +77,7 @@ SYSTEM_INSTRUCTION = f"""
 
 　🔗 **入手先URL**
 　[URL]
+　※「ガイドライン」等は「ページ内の【PDF】を開いてください」と添える
 
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
@@ -108,13 +110,11 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
     st.session_state.messages.append({
         "role": "assistant",
-        "content": "こんにちは。学校の対応やいじめの問題について、資料の分析や法的根拠の確認をお手伝いします。\n証拠資料（PDFや録音など）があればアップロードしてください。"
+        "content": "こんにちは。学校の対応について、法律やガイドラインに基づいた分析を行います。\n証拠資料（PDF、録音、写真など）があればアップロードしてください。"
     })
 
 # 3. チャットセッション（AIの記憶）の初期化・復元
-# メッセージ履歴がある場合は、それをAIの記憶としてセットする
 if "chat_session" not in st.session_state:
-    # 履歴をGemini形式に変換して復元
     history_for_gemini = []
     for msg in st.session_state.messages:
         if msg["role"] == "user":
@@ -137,11 +137,10 @@ with st.sidebar:
     st.header("💾 履歴の保存・読込")
     st.caption("相談内容を自分の端末に保存して、後で続きから再開できます。")
 
-    # ダウンロードボタン（セーブ）
-    # 現在の会話履歴をJSON形式に変換
+    # ダウンロードボタン
     chat_history_json = json.dumps(st.session_state.messages, ensure_ascii=False, indent=2)
     st.download_button(
-        label="📥 今日の相談履歴を保存する",
+        label="📥 今日の相談履歴を保存",
         data=chat_history_json,
         file_name="ijime_soudan_history.json",
         mime="application/json"
@@ -149,44 +148,35 @@ with st.sidebar:
 
     st.divider()
 
-    # アップロードボタン（ロード）
+    # アップロードボタン
     uploaded_history = st.file_uploader("📤 過去の履歴を読み込む", type=["json"])
     
     if uploaded_history is not None:
         try:
-            # ファイルを読み込んで履歴にセット
             loaded_messages = json.load(uploaded_history)
             st.session_state.messages = loaded_messages
-            
-            # AIの記憶（chat_session）も再構築するために、セッションを一度クリアしてリラン
-            # 次の再読み込み時に、上の初期化ロジックでAIの記憶が作られる
             del st.session_state["chat_session"]
             st.success("履歴を復元しました！")
             st.rerun()
         except Exception as e:
-            st.error("履歴ファイルの読み込みに失敗しました。")
+            st.error("読み込み失敗")
 
     st.divider()
 
-    st.header("ℹ️ 使い方")
-    st.info("ブラウザを閉じると会話は消えます。続きから相談したい場合は、必ず「履歴を保存」してください。")
-    
     # リセットボタン
-    if st.button("🗑️ 会話履歴をリセットする"):
+    if st.button("🗑️ 会話履歴をリセット"):
         st.session_state.messages = []
-        # 初期メッセージだけ戻す
         st.session_state.messages.append({
             "role": "assistant",
-            "content": "こんにちは。学校の対応やいじめの問題について、資料の分析や法的根拠の確認をお手伝いします。\n証拠資料（PDFや録音など）があればアップロードしてください。"
+            "content": "こんにちは。学校の対応について、法律やガイドラインに基づいた分析を行います。\n証拠資料（PDF、録音、写真など）があればアップロードしてください。"
         })
-        # AIの記憶もリセット
         del st.session_state["chat_session"]
         st.rerun()
 
 # メイン画面：証拠アップロード
 with st.expander("📂 証拠資料をアップロードする（PDF・音声・画像・Excel）", expanded=True):
     uploaded_files = st.file_uploader(
-        "会話の中で分析してほしい資料があれば選択してください", 
+        "分析してほしい資料があれば選択してください", 
         type=['png', 'jpg', 'jpeg', 'mp3', 'wav', 'm4a', 'xlsx', 'csv', 'pdf'], 
         accept_multiple_files=True,
         key=f"uploader_{st.session_state['uploader_key']}"
@@ -250,7 +240,7 @@ if prompt := st.chat_input("相談内容を入力してください..."):
                 # AIの記憶（chat_session）がなければ作成
                 if "chat_session" not in st.session_state:
                      history_for_gemini = []
-                     for msg in st.session_state.messages[:-1]: # 今回の入力以外を履歴にする
+                     for msg in st.session_state.messages[:-1]:
                         role = "user" if msg["role"] == "user" else "model"
                         history_for_gemini.append({"role": role, "parts": [msg["content"]]})
                      st.session_state.chat_session = st.session_state.model.start_chat(history=history_for_gemini)

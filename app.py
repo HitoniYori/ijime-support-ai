@@ -192,6 +192,8 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
+# （...ここまでは変更なし...）
+
 # チャット入力欄
 if prompt := st.chat_input("相談内容を入力してください..."):
     
@@ -245,6 +247,9 @@ if prompt := st.chat_input("相談内容を入力してください..."):
                         history_for_gemini.append({"role": role, "parts": [msg["content"]]})
                      st.session_state.chat_session = st.session_state.model.start_chat(history=history_for_gemini)
 
+                # ------------------------------------------------------------------
+                # ここでAIに送信します
+                # ------------------------------------------------------------------
                 response = st.session_state.chat_session.send_message(
                     content_parts,
                     generation_config={"temperature": 0.0},
@@ -254,5 +259,19 @@ if prompt := st.chat_input("相談内容を入力してください..."):
                 st.markdown(response.text)
                 st.session_state.messages.append({"role": "assistant", "content": response.text})
 
+            # ----------------------------------------------------------------------
+            # エラー処理（ここを優しくしました！）
+            # ----------------------------------------------------------------------
             except Exception as e:
-                st.error(f"エラーが発生しました: {e}")
+                error_msg = str(e)
+                # 429エラー（回数制限）の場合
+                if "429" in error_msg or "ResourceExhausted" in error_msg or "quota" in error_msg:
+                    st.warning("⚠️ **現在、アクセスが集中しています**\n\n申し訳ありませんが、AIの利用制限（混雑）のため一時的に回答できません。\n**1分ほど時間を空けてから**、もう一度入力し直してください。")
+                
+                # 安全フィルターで弾かれた場合
+                elif "finish_reason" in error_msg and "1" in error_msg:
+                    st.error("⚠️ **回答できませんでした**\n\nAIの安全フィルターにより回答が中断されました。「暴力的な表現」などが含まれていると判断された可能性があります。言い回しを変えて再度お試しください。")
+                
+                # その他のエラー
+                else:
+                    st.error(f"システムエラーが発生しました: {e}\n\n画面を再読み込み（リロード）してみてください。")

@@ -113,7 +113,7 @@ if "messages" not in st.session_state:
         "content": "こんにちは。学校の対応について、法律やガイドラインに基づいた分析を行います。\n証拠資料（PDF、録音、写真など）があればアップロードしてください。"
     })
 
-# 3. チャットセッション（AIの記憶）の初期化・復元
+# 3. チャットセッション（AIの記憶）の初期化
 if "chat_session" not in st.session_state:
     history_for_gemini = []
     for msg in st.session_state.messages:
@@ -148,20 +148,34 @@ with st.sidebar:
 
     st.divider()
 
-    # アップロードボタン（ここを修正しました！）
+    # アップロードボタン（ここを改良しました！）
     uploaded_history = st.file_uploader("📤 過去の履歴を読み込む", type=["json"])
     
     if uploaded_history is not None:
-        # ★修正ポイント：ボタンを押した時だけ読み込むようにして、無限ループを回避
         if st.button("🔄 読み込みを実行する"):
             try:
+                # ファイルの読み込み位置をリセット（念のため）
+                uploaded_history.seek(0)
                 loaded_messages = json.load(uploaded_history)
+                
+                # 履歴を上書き
                 st.session_state.messages = loaded_messages
-                del st.session_state["chat_session"]
-                st.success("履歴を復元しました！")
-                st.rerun()
+                
+                # AIの記憶もその場で再構築（リロードなしで即反映させるため）
+                history_for_gemini = []
+                for msg in loaded_messages:
+                    if msg["role"] == "user":
+                        history_for_gemini.append({"role": "user", "parts": [msg["content"]]})
+                    elif msg["role"] == "assistant":
+                        history_for_gemini.append({"role": "model", "parts": [msg["content"]]})
+                
+                st.session_state.chat_session = st.session_state.model.start_chat(history=history_for_gemini)
+                
+                # 画面をリロードせず、その場で成功メッセージを出す
+                st.success("✅ 履歴を復元しました！画面右側を確認してください。")
+                
             except Exception as e:
-                st.error("読み込み失敗")
+                st.error(f"読み込みに失敗しました: {e}")
 
     st.divider()
 

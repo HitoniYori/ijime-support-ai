@@ -13,7 +13,11 @@ except ImportError:
     PROMPT_TEXT = "（法律データファイル law_data.py が見つかりませんでした。）"
 
 # ページ設定
-st.set_page_config(page_title="いじめ対応支援AI", page_icon="🛡️")
+st.set_page_config(
+    page_title="いじめ対応支援AIパートナー", 
+    page_icon="🛡️",
+    layout="wide"
+)
 
 # 読み込み完了時のトースト表示（画面リロード後にメッセージを出す仕掛け）
 if "show_load_success" in st.session_state and st.session_state.show_load_success:

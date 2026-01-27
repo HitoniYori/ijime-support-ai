@@ -132,51 +132,8 @@ if "uploader_key" not in st.session_state:
     st.session_state["uploader_key"] = 0
 
 # ---------------------------------------------------------
-# UI部分
-# ---------------------------------------------------------
-
-# サイドバー：保存・読み込み・リセット機能
-with st.sidebar:
-    st.header("💾 履歴の保存・読込")
-    st.caption("相談内容を自分の端末に保存して、後で続きから再開できます。")
-
-    # ダウンロードボタン
-    chat_history_json = json.dumps(st.session_state.messages, ensure_ascii=False, indent=2)
-    st.download_button(
-        label="📥 今日の相談履歴を保存",
-        data=chat_history_json,
-        file_name="ijime_soudan_history.json",
-        mime="application/json"
-    )
-
-    st.divider()
-
-    # アップロードボタン
-    uploaded_history = st.file_uploader("📤 過去の履歴を読み込む", type=["json"])
-    
-    if uploaded_history is not None:
-        if st.button("🔄 読み込みを実行する"):
-            try:
-                uploaded_history.seek(0)
-                loaded_messages = json.load(uploaded_history)
-                st.session_state.messages = loaded_messages
-                st.session_state.show_load_success = True
-                st.rerun()
-            except Exception as e:
-                st.error(f"読み込みに失敗しました: {e}")
-
-    st.divider()
-
-    # リセットボタン
-    if st.button("🗑️ 会話履歴をリセット"):
-        st.session_state.messages = []
-        st.session_state.messages.append({
-            "role": "assistant",
-            "content": "こんにちは。学校の対応について、法律やガイドラインに基づいた分析を行います。\n証拠資料（PDF、録音、写真など）があればアップロードしてください。"
-        })
-        st.rerun()
-
 # メイン画面：証拠アップロード
+# ---------------------------------------------------------
 with st.expander("📂 証拠資料をアップロードする（PDF・音声・画像・Excel）", expanded=True):
     uploaded_files = st.file_uploader(
         "分析してほしい資料があれば選択してください", 
@@ -190,12 +147,16 @@ with st.expander("📂 証拠資料をアップロードする（PDF・音声・
             st.session_state["uploader_key"] += 1
             st.rerun()
 
+# ---------------------------------------------------------
+# チャット処理（ここを先に実行させます！）
+# ---------------------------------------------------------
+
 # チャット履歴の表示
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# チャット入力欄
+# チャット入力処理
 if prompt := st.chat_input("相談内容を入力してください..."):
     
     # 1. ユーザー入力を表示
@@ -253,24 +214,58 @@ if prompt := st.chat_input("相談内容を入力してください..."):
                 st.markdown(response.text)
                 st.session_state.messages.append({"role": "assistant", "content": response.text})
 
-            # ---------------------------------------------------------
-            # エラー処理（ここを修正しました！）
-            # ---------------------------------------------------------
+            # エラー処理
             except Exception as e:
                 error_msg = str(e)
-                
-                # 429: リクエスト制限（混雑）
                 if "429" in error_msg or "ResourceExhausted" in error_msg or "quota" in error_msg:
                     st.warning("⚠️ **現在、アクセスが集中しています**\n\n申し訳ありませんが、AIの利用制限（混雑）のため一時的に回答できません。\n**1分ほど時間を空けてから**、もう一度入力し直してください。")
-                
-                # 500: サーバー内部エラー（一時的不具合）
-                elif "500" in error_msg or "Internal error" in error_msg or "An internal error has occurred" in error_msg:
-                    st.warning("⚠️ **一時的なサーバーエラーです**\n\nGoogleのAIサーバー側で一時的な不具合が発生しました。\n**少し時間（1〜2分）を置いてから**、もう一度お試しください。(Error 500)")
-
-                # 1: 安全フィルターによるブロック
                 elif "finish_reason" in error_msg and "1" in error_msg:
                     st.error("⚠️ **回答できませんでした**\n\nAIの安全フィルターにより回答が中断されました。「暴力的な表現」などが含まれていると判断された可能性があります。言い回しを変えて再度お試しください。")
-                
-                # その他のシステムエラー（elseは必ず最後！）
+                elif "500" in error_msg or "Internal error" in error_msg:
+                    st.warning("⚠️ **一時的なサーバーエラーです**\n\nGoogleのAIサーバー側で一時的な不具合が発生しました。\n**少し時間（1〜2分）を置いてから**、もう一度お試しください。(Error 500)")
                 else:
                     st.error(f"システムエラーが発生しました: {e}\n\n画面を再読み込み（リロード）してみてください。")
+
+# ---------------------------------------------------------
+# サイドバー（一番最後に処理することで、最新の履歴を反映！）
+# ---------------------------------------------------------
+with st.sidebar:
+    st.header("💾 履歴の保存・読込")
+    st.caption("相談内容を自分の端末に保存して、後で続きから再開できます。")
+
+    # ダウンロードボタン
+    # ★ここがポイント：この時点で最新の st.session_state.messages が入る！
+    chat_history_json = json.dumps(st.session_state.messages, ensure_ascii=False, indent=2)
+    st.download_button(
+        label="📥 今日の相談履歴を保存",
+        data=chat_history_json,
+        file_name="ijime_soudan_history.json",
+        mime="application/json"
+    )
+
+    st.divider()
+
+    # アップロードボタン
+    uploaded_history = st.file_uploader("📤 過去の履歴を読み込む", type=["json"])
+    
+    if uploaded_history is not None:
+        if st.button("🔄 読み込みを実行する"):
+            try:
+                uploaded_history.seek(0)
+                loaded_messages = json.load(uploaded_history)
+                st.session_state.messages = loaded_messages
+                st.session_state.show_load_success = True
+                st.rerun()
+            except Exception as e:
+                st.error(f"読み込みに失敗しました: {e}")
+
+    st.divider()
+
+    # リセットボタン
+    if st.button("🗑️ 会話履歴をリセット"):
+        st.session_state.messages = []
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": "こんにちは。学校の対応について、法律やガイドラインに基づいた分析を行います。\n証拠資料（PDF、録音、写真など）があればアップロードしてください。"
+        })
+        st.rerun()

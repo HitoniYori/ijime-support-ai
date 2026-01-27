@@ -86,7 +86,9 @@ SYSTEM_INSTRUCTION = f"""
 **解説:** ...
 """
 
-# 安全フィルターの解除
+# ---------------------------------------------------------
+# 安全フィルターの設定（ここを上に持ってきました！）
+# ---------------------------------------------------------
 safety_settings = {
     HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
     HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
@@ -99,10 +101,12 @@ safety_settings = {
 # ---------------------------------------------------------
 
 # 1. モデルの準備
+# ★修正点：モデルを作る段階で safety_settings を適用し、フィルターを完全に無効化
 if "model" not in st.session_state:
     st.session_state.model = genai.GenerativeModel(
         model_name="gemini-flash-latest",
-        system_instruction=SYSTEM_INSTRUCTION
+        system_instruction=SYSTEM_INSTRUCTION,
+        safety_settings=safety_settings  # ← これを追加しました！
     )
 
 # 2. 画面表示用の履歴初期化
@@ -113,7 +117,7 @@ if "messages" not in st.session_state:
         "content": "こんにちは。学校の対応について、法律やガイドラインに基づいた分析を行います。\n証拠資料（PDF、録音、写真など）があればアップロードしてください。"
     })
 
-# 3. チャットセッション（AIの記憶）の初期化
+# 3. チャットセッション（AIの記憶）の初期化・復元
 if "chat_session" not in st.session_state:
     history_for_gemini = []
     for msg in st.session_state.messages:
@@ -148,20 +152,16 @@ with st.sidebar:
 
     st.divider()
 
-    # アップロードボタン（ここを改良しました！）
+    # アップロードボタン
     uploaded_history = st.file_uploader("📤 過去の履歴を読み込む", type=["json"])
     
     if uploaded_history is not None:
         if st.button("🔄 読み込みを実行する"):
             try:
-                # ファイルの読み込み位置をリセット（念のため）
                 uploaded_history.seek(0)
                 loaded_messages = json.load(uploaded_history)
-                
-                # 履歴を上書き
                 st.session_state.messages = loaded_messages
                 
-                # AIの記憶もその場で再構築（リロードなしで即反映させるため）
                 history_for_gemini = []
                 for msg in loaded_messages:
                     if msg["role"] == "user":
@@ -170,8 +170,6 @@ with st.sidebar:
                         history_for_gemini.append({"role": "model", "parts": [msg["content"]]})
                 
                 st.session_state.chat_session = st.session_state.model.start_chat(history=history_for_gemini)
-                
-                # 画面をリロードせず、その場で成功メッセージを出す
                 st.success("✅ 履歴を復元しました！画面右側を確認してください。")
                 
             except Exception as e:
@@ -262,7 +260,7 @@ if prompt := st.chat_input("相談内容を入力してください..."):
                         history_for_gemini.append({"role": role, "parts": [msg["content"]]})
                      st.session_state.chat_session = st.session_state.model.start_chat(history=history_for_gemini)
 
-                # AIへ送信
+                # AIへ送信（念のためここでもsafety_settingsを指定）
                 response = st.session_state.chat_session.send_message(
                     content_parts,
                     generation_config={"temperature": 0.0},
@@ -272,7 +270,7 @@ if prompt := st.chat_input("相談内容を入力してください..."):
                 st.markdown(response.text)
                 st.session_state.messages.append({"role": "assistant", "content": response.text})
 
-            # エラー処理（優しく表示）
+            # エラー処理
             except Exception as e:
                 error_msg = str(e)
                 if "429" in error_msg or "ResourceExhausted" in error_msg or "quota" in error_msg:

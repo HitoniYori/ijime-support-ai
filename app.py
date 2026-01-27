@@ -45,10 +45,14 @@ AIは回答時に、以下の情報を参照して「該当ページ数」を必
 [ページ目安] P.3(定義), P.12(解消定義), P.15(抱え込み禁止)
 """
 
-# システムプロンプト
+# システムプロンプト（記憶に関する指示を強化）
 SYSTEM_INSTRUCTION = f"""
 あなたは、いじめ被害児童とその家族を守るための「法務・教育行政アドバイザーAI」です。
 ユーザーと継続的な対話を行い、学校側の対応に違法性がないかチェックしてください。
+
+【重要：記憶と履歴について】
+あなたは、**現在提供されている「会話履歴（Context）」を、自分自身の「記憶」として扱ってください。**
+ユーザーが「前回話した内容は？」や「さっきの資料は？」と質問した場合、**「記憶がありません」と答えるのではなく、履歴にある情報を読み返して回答してください。**
 
 【あなたの役割】
 1. **証拠の解析**: 提示されたPDF、音声、画像の内容を読み取る。
@@ -148,7 +152,6 @@ with st.sidebar:
                 loaded_messages = json.load(uploaded_history)
                 st.session_state.messages = loaded_messages
                 st.success("✅ 履歴を復元しました！画面右側を確認してください。")
-                # ここではrerunせず、次の操作で自然に反映させる
             except Exception as e:
                 st.error(f"読み込みに失敗しました: {e}")
 
@@ -196,16 +199,21 @@ if prompt := st.chat_input("相談内容を入力してください..."):
             try:
                 # -------------------------------------------------------------
                 # ★ここが重要修正ポイント★
-                # 送信する直前に、画面上の全履歴を使ってAIの記憶を再構築する
-                # これにより「読み込んだ履歴」も確実にAIが認識します
+                # 履歴の順番を整理し、AIが理解しやすい形に変換します
                 # -------------------------------------------------------------
                 history_for_gemini = []
-                # 直前の入力(prompt)以外を履歴として積む
-                for msg in st.session_state.messages[:-1]:
-                    role = "user" if msg["role"] == "user" else "model"
-                    history_for_gemini.append({"role": role, "parts": [msg["content"]]})
                 
-                # 履歴を持った状態でチャットを開始
+                # 履歴の先頭（挨拶など）が「AI」から始まっているとエラーになりやすいため、
+                # ユーザーの発言から始まるように調整するか、順番通りに格納する
+                for msg in st.session_state.messages[:-1]:
+                    # ユーザーの入力か、AIの回答かを判定
+                    role = "user" if msg["role"] == "user" else "model"
+                    
+                    # Geminiは「中身が空」のメッセージを嫌うのでチェック
+                    if msg["content"] and msg["content"].strip() != "":
+                        history_for_gemini.append({"role": role, "parts": [msg["content"]]})
+                
+                # 履歴を持った状態でチャットを新規開始（毎回リフレッシュ）
                 chat = st.session_state.model.start_chat(history=history_for_gemini)
 
                 # 送信コンテンツの準備
@@ -253,4 +261,5 @@ if prompt := st.chat_input("相談内容を入力してください..."):
                 elif "finish_reason" in error_msg and "1" in error_msg:
                     st.error("⚠️ **回答できませんでした**\n\n言い回しを変えて再度お試しください。")
                 else:
+                    # 詳細なエラーを出してデバッグしやすくする
                     st.error(f"システムエラー: {e}")

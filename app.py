@@ -27,7 +27,7 @@ try:
 except:
     st.error("APIキー設定エラー：Streamlit CloudのSecretsを確認してください。")
 
-# 参照資料リスト（リンク修正済み）
+# 参照資料リスト
 REFERENCE_MAP = """
 【重要資料のページ数・URL対応表】
 AIは回答時に、以下の情報を参照して「該当ページ数」を必ず提示してください。
@@ -148,18 +148,20 @@ with st.sidebar:
 
     st.divider()
 
-    # アップロードボタン
+    # アップロードボタン（ここを修正しました！）
     uploaded_history = st.file_uploader("📤 過去の履歴を読み込む", type=["json"])
     
     if uploaded_history is not None:
-        try:
-            loaded_messages = json.load(uploaded_history)
-            st.session_state.messages = loaded_messages
-            del st.session_state["chat_session"]
-            st.success("履歴を復元しました！")
-            st.rerun()
-        except Exception as e:
-            st.error("読み込み失敗")
+        # ★修正ポイント：ボタンを押した時だけ読み込むようにして、無限ループを回避
+        if st.button("🔄 読み込みを実行する"):
+            try:
+                loaded_messages = json.load(uploaded_history)
+                st.session_state.messages = loaded_messages
+                del st.session_state["chat_session"]
+                st.success("履歴を復元しました！")
+                st.rerun()
+            except Exception as e:
+                st.error("読み込み失敗")
 
     st.divider()
 
@@ -170,7 +172,8 @@ with st.sidebar:
             "role": "assistant",
             "content": "こんにちは。学校の対応について、法律やガイドラインに基づいた分析を行います。\n証拠資料（PDF、録音、写真など）があればアップロードしてください。"
         })
-        del st.session_state["chat_session"]
+        if "chat_session" in st.session_state:
+            del st.session_state["chat_session"]
         st.rerun()
 
 # メイン画面：証拠アップロード
@@ -191,8 +194,6 @@ with st.expander("📂 証拠資料をアップロードする（PDF・音声・
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
-
-# （...ここまでは変更なし...）
 
 # チャット入力欄
 if prompt := st.chat_input("相談内容を入力してください..."):
@@ -247,9 +248,7 @@ if prompt := st.chat_input("相談内容を入力してください..."):
                         history_for_gemini.append({"role": role, "parts": [msg["content"]]})
                      st.session_state.chat_session = st.session_state.model.start_chat(history=history_for_gemini)
 
-                # ------------------------------------------------------------------
-                # ここでAIに送信します
-                # ------------------------------------------------------------------
+                # AIへ送信
                 response = st.session_state.chat_session.send_message(
                     content_parts,
                     generation_config={"temperature": 0.0},
@@ -259,19 +258,12 @@ if prompt := st.chat_input("相談内容を入力してください..."):
                 st.markdown(response.text)
                 st.session_state.messages.append({"role": "assistant", "content": response.text})
 
-            # ----------------------------------------------------------------------
-            # エラー処理（ここを優しくしました！）
-            # ----------------------------------------------------------------------
+            # エラー処理（優しく表示）
             except Exception as e:
                 error_msg = str(e)
-                # 429エラー（回数制限）の場合
                 if "429" in error_msg or "ResourceExhausted" in error_msg or "quota" in error_msg:
                     st.warning("⚠️ **現在、アクセスが集中しています**\n\n申し訳ありませんが、AIの利用制限（混雑）のため一時的に回答できません。\n**1分ほど時間を空けてから**、もう一度入力し直してください。")
-                
-                # 安全フィルターで弾かれた場合
                 elif "finish_reason" in error_msg and "1" in error_msg:
                     st.error("⚠️ **回答できませんでした**\n\nAIの安全フィルターにより回答が中断されました。「暴力的な表現」などが含まれていると判断された可能性があります。言い回しを変えて再度お試しください。")
-                
-                # その他のエラー
                 else:
                     st.error(f"システムエラーが発生しました: {e}\n\n画面を再読み込み（リロード）してみてください。")

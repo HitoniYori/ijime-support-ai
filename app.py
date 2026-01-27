@@ -86,9 +86,7 @@ SYSTEM_INSTRUCTION = f"""
 **解説:** ...
 """
 
-# ---------------------------------------------------------
-# 安全フィルターの設定（ここを上に持ってきました！）
-# ---------------------------------------------------------
+# 安全フィルターの完全解除
 safety_settings = {
     HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
     HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
@@ -101,12 +99,11 @@ safety_settings = {
 # ---------------------------------------------------------
 
 # 1. モデルの準備
-# ★修正点：モデルを作る段階で safety_settings を適用し、フィルターを完全に無効化
 if "model" not in st.session_state:
     st.session_state.model = genai.GenerativeModel(
         model_name="gemini-flash-latest",
         system_instruction=SYSTEM_INSTRUCTION,
-        safety_settings=safety_settings  # ← これを追加しました！
+        safety_settings=safety_settings
     )
 
 # 2. 画面表示用の履歴初期化
@@ -117,18 +114,7 @@ if "messages" not in st.session_state:
         "content": "こんにちは。学校の対応について、法律やガイドラインに基づいた分析を行います。\n証拠資料（PDF、録音、写真など）があればアップロードしてください。"
     })
 
-# 3. チャットセッション（AIの記憶）の初期化・復元
-if "chat_session" not in st.session_state:
-    history_for_gemini = []
-    for msg in st.session_state.messages:
-        if msg["role"] == "user":
-            history_for_gemini.append({"role": "user", "parts": [msg["content"]]})
-        elif msg["role"] == "assistant":
-            history_for_gemini.append({"role": "model", "parts": [msg["content"]]})
-    
-    st.session_state.chat_session = st.session_state.model.start_chat(history=history_for_gemini)
-
-# 4. アップローダーのリセット用キー
+# 3. アップローダーのリセット用キー
 if "uploader_key" not in st.session_state:
     st.session_state["uploader_key"] = 0
 
@@ -161,17 +147,8 @@ with st.sidebar:
                 uploaded_history.seek(0)
                 loaded_messages = json.load(uploaded_history)
                 st.session_state.messages = loaded_messages
-                
-                history_for_gemini = []
-                for msg in loaded_messages:
-                    if msg["role"] == "user":
-                        history_for_gemini.append({"role": "user", "parts": [msg["content"]]})
-                    elif msg["role"] == "assistant":
-                        history_for_gemini.append({"role": "model", "parts": [msg["content"]]})
-                
-                st.session_state.chat_session = st.session_state.model.start_chat(history=history_for_gemini)
                 st.success("✅ 履歴を復元しました！画面右側を確認してください。")
-                
+                # ここではrerunせず、次の操作で自然に反映させる
             except Exception as e:
                 st.error(f"読み込みに失敗しました: {e}")
 
@@ -184,8 +161,6 @@ with st.sidebar:
             "role": "assistant",
             "content": "こんにちは。学校の対応について、法律やガイドラインに基づいた分析を行います。\n証拠資料（PDF、録音、写真など）があればアップロードしてください。"
         })
-        if "chat_session" in st.session_state:
-            del st.session_state["chat_session"]
         st.rerun()
 
 # メイン画面：証拠アップロード
@@ -210,20 +185,37 @@ for message in st.session_state.messages:
 # チャット入力欄
 if prompt := st.chat_input("相談内容を入力してください..."):
     
+    # 1. ユーザー入力を表示
     with st.chat_message("user"):
         st.markdown(prompt)
     st.session_state.messages.append({"role": "user", "content": prompt})
 
+    # 2. AIの応答生成
     with st.chat_message("assistant"):
         with st.spinner("分析中..."):
             try:
+                # -------------------------------------------------------------
+                # ★ここが重要修正ポイント★
+                # 送信する直前に、画面上の全履歴を使ってAIの記憶を再構築する
+                # これにより「読み込んだ履歴」も確実にAIが認識します
+                # -------------------------------------------------------------
+                history_for_gemini = []
+                # 直前の入力(prompt)以外を履歴として積む
+                for msg in st.session_state.messages[:-1]:
+                    role = "user" if msg["role"] == "user" else "model"
+                    history_for_gemini.append({"role": role, "parts": [msg["content"]]})
+                
+                # 履歴を持った状態でチャットを開始
+                chat = st.session_state.model.start_chat(history=history_for_gemini)
+
+                # 送信コンテンツの準備
                 content_parts = []
                 content_parts.append(prompt)
                 
+                # ファイル処理
                 if uploaded_files:
                     for uploaded_file in uploaded_files:
                         file_type = uploaded_file.type
-                        
                         if "pdf" in file_type:
                             try:
                                 reader = pypdf.PdfReader(uploaded_file)
@@ -231,37 +223,20 @@ if prompt := st.chat_input("相談内容を入力してください..."):
                                 for page in reader.pages:
                                     pdf_text += page.extract_text()
                                 content_parts.append(f"【参照資料(PDF)】\n{pdf_text}")
-                            except:
-                                st.error("PDFの読み込みに失敗しました")
-                        
+                            except: st.error("PDF読込エラー")
                         elif "image" in file_type:
-                            img = Image.open(uploaded_file)
-                            content_parts.append(img)
-                        
+                            content_parts.append(Image.open(uploaded_file))
                         elif "audio" in file_type:
-                            audio_bytes = uploaded_file.read()
-                            content_parts.append({"mime_type": file_type, "data": audio_bytes})
-                        
+                            content_parts.append({"mime_type": file_type, "data": uploaded_file.read()})
                         elif "spreadsheet" in file_type or "csv" in file_type or "excel" in file_type:
                             try:
-                                if "csv" in file_type:
-                                    df = pd.read_csv(uploaded_file)
-                                else:
-                                    df = pd.read_excel(uploaded_file)
+                                if "csv" in file_type: df = pd.read_csv(uploaded_file)
+                                else: df = pd.read_excel(uploaded_file)
                                 content_parts.append(f"【参照データ】\n{df.to_string()}")
-                            except:
-                                st.error("表データの読み込みに失敗しました")
+                            except: st.error("表読込エラー")
 
-                # AIの記憶（chat_session）がなければ作成
-                if "chat_session" not in st.session_state:
-                     history_for_gemini = []
-                     for msg in st.session_state.messages[:-1]:
-                        role = "user" if msg["role"] == "user" else "model"
-                        history_for_gemini.append({"role": role, "parts": [msg["content"]]})
-                     st.session_state.chat_session = st.session_state.model.start_chat(history=history_for_gemini)
-
-                # AIへ送信（念のためここでもsafety_settingsを指定）
-                response = st.session_state.chat_session.send_message(
+                # AIへ送信
+                response = chat.send_message(
                     content_parts,
                     generation_config={"temperature": 0.0},
                     safety_settings=safety_settings
@@ -274,8 +249,8 @@ if prompt := st.chat_input("相談内容を入力してください..."):
             except Exception as e:
                 error_msg = str(e)
                 if "429" in error_msg or "ResourceExhausted" in error_msg or "quota" in error_msg:
-                    st.warning("⚠️ **現在、アクセスが集中しています**\n\n申し訳ありませんが、AIの利用制限（混雑）のため一時的に回答できません。\n**1分ほど時間を空けてから**、もう一度入力し直してください。")
+                    st.warning("⚠️ **現在、アクセスが集中しています**\n\n1分ほど時間を空けてから、もう一度入力してください。")
                 elif "finish_reason" in error_msg and "1" in error_msg:
-                    st.error("⚠️ **回答できませんでした**\n\nAIの安全フィルターにより回答が中断されました。「暴力的な表現」などが含まれていると判断された可能性があります。言い回しを変えて再度お試しください。")
+                    st.error("⚠️ **回答できませんでした**\n\n言い回しを変えて再度お試しください。")
                 else:
-                    st.error(f"システムエラーが発生しました: {e}\n\n画面を再読み込み（リロード）してみてください。")
+                    st.error(f"システムエラー: {e}")

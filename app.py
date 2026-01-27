@@ -15,6 +15,11 @@ except ImportError:
 # ページ設定
 st.set_page_config(page_title="いじめ対応支援AI", page_icon="🛡️")
 
+# 読み込み完了時のトースト表示（画面リロード後にメッセージを出す仕掛け）
+if "show_load_success" in st.session_state and st.session_state.show_load_success:
+    st.toast("✅ 過去の履歴を復元しました！", icon="🎉")
+    st.session_state.show_load_success = False
+
 st.title("🛡️ いじめ対応支援AIパートナー")
 st.markdown("""
 **学校や教育委員会の対応に疑問を感じていませんか？**
@@ -45,7 +50,7 @@ AIは回答時に、以下の情報を参照して「該当ページ数」を必
 [ページ目安] P.3(定義), P.12(解消定義), P.15(抱え込み禁止)
 """
 
-# システムプロンプト（記憶に関する指示を強化）
+# システムプロンプト
 SYSTEM_INSTRUCTION = f"""
 あなたは、いじめ被害児童とその家族を守るための「法務・教育行政アドバイザーAI」です。
 ユーザーと継続的な対話を行い、学校側の対応に違法性がないかチェックしてください。
@@ -142,16 +147,25 @@ with st.sidebar:
 
     st.divider()
 
-    # アップロードボタン
+    # アップロードボタン（ここを修正しました）
     uploaded_history = st.file_uploader("📤 過去の履歴を読み込む", type=["json"])
     
     if uploaded_history is not None:
         if st.button("🔄 読み込みを実行する"):
             try:
+                # 1. ファイルを読み込む
                 uploaded_history.seek(0)
                 loaded_messages = json.load(uploaded_history)
+                
+                # 2. メッセージ履歴を上書き
                 st.session_state.messages = loaded_messages
-                st.success("✅ 履歴を復元しました！画面右側を確認してください。")
+                
+                # 3. 成功フラグを立てる（リロード後にメッセージを出すため）
+                st.session_state.show_load_success = True
+                
+                # 4. 画面を強制リロード（これでチャット欄が最新になります！）
+                st.rerun()
+                
             except Exception as e:
                 st.error(f"読み込みに失敗しました: {e}")
 
@@ -198,22 +212,15 @@ if prompt := st.chat_input("相談内容を入力してください..."):
         with st.spinner("分析中..."):
             try:
                 # -------------------------------------------------------------
-                # ★ここが重要修正ポイント★
-                # 履歴の順番を整理し、AIが理解しやすい形に変換します
+                # 毎回、最新の履歴を使ってAIの記憶を再構築する
                 # -------------------------------------------------------------
                 history_for_gemini = []
-                
-                # 履歴の先頭（挨拶など）が「AI」から始まっているとエラーになりやすいため、
-                # ユーザーの発言から始まるように調整するか、順番通りに格納する
                 for msg in st.session_state.messages[:-1]:
-                    # ユーザーの入力か、AIの回答かを判定
                     role = "user" if msg["role"] == "user" else "model"
-                    
-                    # Geminiは「中身が空」のメッセージを嫌うのでチェック
-                    if msg["content"] and msg["content"].strip() != "":
+                    if msg["content"]:
                         history_for_gemini.append({"role": role, "parts": [msg["content"]]})
                 
-                # 履歴を持った状態でチャットを新規開始（毎回リフレッシュ）
+                # 履歴を持った状態でチャットを開始
                 chat = st.session_state.model.start_chat(history=history_for_gemini)
 
                 # 送信コンテンツの準備
@@ -261,5 +268,4 @@ if prompt := st.chat_input("相談内容を入力してください..."):
                 elif "finish_reason" in error_msg and "1" in error_msg:
                     st.error("⚠️ **回答できませんでした**\n\n言い回しを変えて再度お試しください。")
                 else:
-                    # 詳細なエラーを出してデバッグしやすくする
                     st.error(f"システムエラー: {e}")

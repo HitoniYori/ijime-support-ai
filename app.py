@@ -19,7 +19,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# 読み込み完了時のトースト表示（画面リロード後にメッセージを出す仕掛け）
+# 読み込み完了時のトースト表示
 if "show_load_success" in st.session_state and st.session_state.show_load_success:
     st.toast("✅ 過去の履歴を復元しました！", icon="🎉")
     st.session_state.show_load_success = False
@@ -151,25 +151,17 @@ with st.sidebar:
 
     st.divider()
 
-    # アップロードボタン（ここを修正しました）
+    # アップロードボタン
     uploaded_history = st.file_uploader("📤 過去の履歴を読み込む", type=["json"])
     
     if uploaded_history is not None:
         if st.button("🔄 読み込みを実行する"):
             try:
-                # 1. ファイルを読み込む
                 uploaded_history.seek(0)
                 loaded_messages = json.load(uploaded_history)
-                
-                # 2. メッセージ履歴を上書き
                 st.session_state.messages = loaded_messages
-                
-                # 3. 成功フラグを立てる（リロード後にメッセージを出すため）
                 st.session_state.show_load_success = True
-                
-                # 4. 画面を強制リロード（これでチャット欄が最新になります！）
                 st.rerun()
-                
             except Exception as e:
                 st.error(f"読み込みに失敗しました: {e}")
 
@@ -215,16 +207,13 @@ if prompt := st.chat_input("相談内容を入力してください..."):
     with st.chat_message("assistant"):
         with st.spinner("分析中..."):
             try:
-                # -------------------------------------------------------------
-                # 毎回、最新の履歴を使ってAIの記憶を再構築する
-                # -------------------------------------------------------------
+                # 記憶の再構築
                 history_for_gemini = []
                 for msg in st.session_state.messages[:-1]:
                     role = "user" if msg["role"] == "user" else "model"
                     if msg["content"]:
                         history_for_gemini.append({"role": role, "parts": [msg["content"]]})
                 
-                # 履歴を持った状態でチャットを開始
                 chat = st.session_state.model.start_chat(history=history_for_gemini)
 
                 # 送信コンテンツの準備
@@ -264,14 +253,24 @@ if prompt := st.chat_input("相談内容を入力してください..."):
                 st.markdown(response.text)
                 st.session_state.messages.append({"role": "assistant", "content": response.text})
 
-            # エラー処理
+            # ---------------------------------------------------------
+            # エラー処理（ここを修正しました！）
+            # ---------------------------------------------------------
             except Exception as e:
                 error_msg = str(e)
+                
+                # 429: リクエスト制限（混雑）
                 if "429" in error_msg or "ResourceExhausted" in error_msg or "quota" in error_msg:
-                    st.warning("⚠️ **現在、アクセスが集中しています**\n\n1分ほど時間を空けてから、もう一度入力してください。")
-                elif "finish_reason" in error_msg and "1" in error_msg:
-                    st.error("⚠️ **回答できませんでした**\n\n言い回しを変えて再度お試しください。")
-                else:
-                    st.error(f"システムエラー: {e}")
-                elif "500" in error_msg or "Internal error" in error_msg:
+                    st.warning("⚠️ **現在、アクセスが集中しています**\n\n申し訳ありませんが、AIの利用制限（混雑）のため一時的に回答できません。\n**1分ほど時間を空けてから**、もう一度入力し直してください。")
+                
+                # 500: サーバー内部エラー（一時的不具合）
+                elif "500" in error_msg or "Internal error" in error_msg or "An internal error has occurred" in error_msg:
                     st.warning("⚠️ **一時的なサーバーエラーです**\n\nGoogleのAIサーバー側で一時的な不具合が発生しました。\n**少し時間（1〜2分）を置いてから**、もう一度お試しください。(Error 500)")
+
+                # 1: 安全フィルターによるブロック
+                elif "finish_reason" in error_msg and "1" in error_msg:
+                    st.error("⚠️ **回答できませんでした**\n\nAIの安全フィルターにより回答が中断されました。「暴力的な表現」などが含まれていると判断された可能性があります。言い回しを変えて再度お試しください。")
+                
+                # その他のシステムエラー（elseは必ず最後！）
+                else:
+                    st.error(f"システムエラーが発生しました: {e}\n\n画面を再読み込み（リロード）してみてください。")

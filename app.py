@@ -273,3 +273,5 @@ if prompt := st.chat_input("相談内容を入力してください..."):
                     st.error("⚠️ **回答できませんでした**\n\n言い回しを変えて再度お試しください。")
                 else:
                     st.error(f"システムエラー: {e}")
+                elif "500" in error_msg or "Internal error" in error_msg:
+                    st.warning("⚠️ **一時的なサーバーエラーです**\n\nGoogleのAIサーバー側で一時的な不具合が発生しました。\n**少し時間（1〜2分）を置いてから**、もう一度お試しください。(Error 500)")

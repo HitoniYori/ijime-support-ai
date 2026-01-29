@@ -114,7 +114,7 @@ safety_settings = {
 # 1. モデルの準備
 if "model" not in st.session_state:
     st.session_state.model = genai.GenerativeModel(
-        model_name="gemini-flash-latest",
+        model_name="gemini-1.5-flash",  # ← 明確に「1.5 Flash」と指定
         system_instruction=SYSTEM_INSTRUCTION,
         safety_settings=safety_settings
     )

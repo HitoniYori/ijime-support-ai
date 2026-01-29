@@ -56,6 +56,10 @@ AIは回答時に、以下の情報を参照して「該当ページ数」を必
 ■こども基本法
 [URL] https://elaws.e-gov.go.jp/document?lawid=504AC1000000077
 [ページ目安] 第3条(意見表明・最善の利益), 第11条(意見の反映)
+
+■学校における個人情報の取扱いQ&A（黒塗り対策）
+[URL] https://www.mext.go.jp/a_menu/shotou/seitoshidou/06060124.htm
+[ページ目安] Q&A（開示・非開示の基準）
 """
 
 # システムプロンプト

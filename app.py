@@ -42,24 +42,24 @@ REFERENCE_MAP = """
 AIは回答時に、以下の情報を参照して「該当ページ数」を必ず提示してください。
 
 ■いじめの重大事態の調査に関するガイドライン（令和6年8月改訂版）
-[URL] https://www.mext.go.jp/a_menu/shotou/seitoshidou/1302904.htm
+https://www.mext.go.jp/a_menu/shotou/seitoshidou/1302904.htm
 [ページ目安] P.1(基本的姿勢), P.2(重大事態定義), P.4(報告義務), P.15(公表)
 
 ■いじめ防止対策推進法（条文）
-[URL] https://elaws.e-gov.go.jp/document?lawid=425AC1000000071
+https://elaws.e-gov.go.jp/document?lawid=425AC1000000071
 [ページ目安] 第22条(組織), 第23条(通報義務), 第28条(重大事態)
 
 ■いじめの防止等のための基本的な方針（平成29年改定）
-[URL] https://www.mext.go.jp/a_menu/shotou/seitoshidou/1302904.htm
+https://www.mext.go.jp/a_menu/shotou/seitoshidou/1302904.htm
 [ページ目安] P.3(定義), P.12(解消定義), P.15(抱え込み禁止)
 
 ■こども基本法
-[URL] https://elaws.e-gov.go.jp/document?lawid=504AC1000000077
+https://elaws.e-gov.go.jp/document?lawid=504AC1000000077
 [ページ目安] 第3条(意見表明・最善の利益), 第11条(意見の反映)
 
 ■学校における個人情報の取扱いQ&A（黒塗り対策）
-[URL] https://www.mext.go.jp/a_menu/shotou/seitoshidou/06060124.htm
-[ページ目安] Q&A（開示・非開示の基準）
+https://www.mext.go.jp/a_menu/shotou/seitoshidou/1302904.htm
+[ページ目安] いじめ防止基本方針のP.15〜18付近、またはガイドライン参照
 """
 
 # システムプロンプト
